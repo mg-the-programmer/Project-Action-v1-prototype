@@ -77,6 +77,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except RuntimeError as error:
+    except Exception as error:
         print(f"Smoke test failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error

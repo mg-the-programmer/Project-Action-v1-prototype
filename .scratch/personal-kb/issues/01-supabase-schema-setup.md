@@ -46,7 +46,7 @@ retrieval_logs (
 
 **Blocked by:** None (can start immediately)
 
-**Status:** blocked — Docker Desktop engine unavailable
+**Status:** blocked — cloud migration has not been applied
 
 - [ ] Supabase project created with pgvector extension enabled
 - [x] All three tables defined with correct column types and indexes (ivfflat index on `embedding`, GIN index on `tsv` and `tags`)
@@ -56,4 +56,4 @@ retrieval_logs (
 
 ## Comments
 
-- 2026-09-21: Added the Supabase migration, local configuration, environment template, Python project, and smoke-test script. Dependencies are installed in `.venv`. The migration and end-to-end smoke test require the local Docker engine; `docker version` reports that `dockerDesktopLinuxEngine` is unavailable and no Docker Desktop executable is installed.
+- 2026-09-21: Added the Supabase migration, cloud configuration, environment template, Python project, and smoke-test script. Dependencies are installed in `.venv`. The cloud smoke test reached the configured project but received `PGRST205` because `public.entries` has not yet been created. Apply the migration with `supabase link --project-ref <project-ref>` and `supabase db push`, then rerun `python scripts/smoke_test.py`.
