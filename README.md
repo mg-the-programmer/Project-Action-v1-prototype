@@ -11,12 +11,13 @@
    ```
 
 2. Copy `.env.example` to `.env`. Set `SUPABASE_URL` and `SUPABASE_KEY` to the cloud project URL and anon key. `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, and `OPENAI_BASE_URL` configure the OpenAI client used by the later pipeline steps; `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` provide their credentials.
-3. Apply the migration to the cloud project using the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started). Authenticate and link the project, then push the migration:
+3. Install the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) as a project dependency, then authenticate, link the cloud project, and push the migration:
 
    ```powershell
-   supabase login
-   supabase link --project-ref your-project-ref
-   supabase db push
+   npm install supabase --save-dev
+   npx supabase login
+   npx supabase link --project-ref your-project-ref
+   npx supabase db push
    ```
 
 4. Prove the cloud data layer:
