@@ -57,3 +57,4 @@ retrieval_logs (
 ## Comments
 
 - 2026-09-21: Added the Supabase migration, cloud configuration, environment template, Python project, and smoke-test script. Dependencies are installed in `.venv`. The cloud smoke test reached the configured project but received `PGRST205` because `public.entries` has not yet been created. Apply the migration with `supabase link --project-ref <project-ref>` and `supabase db push`, then rerun `python scripts/smoke_test.py`.
+- 2026-09-21: The first cloud migration attempt found pgvector installed outside the `extensions` schema. The migration now searches both `public` and `extensions`, so it can use the existing extension without relocating it.

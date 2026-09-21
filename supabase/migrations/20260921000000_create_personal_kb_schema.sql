@@ -1,9 +1,13 @@
 create extension if not exists vector with schema extensions;
 
+-- Existing Supabase projects may have pgvector installed in public instead of
+-- extensions. Make either location available to this migration.
+set search_path = public, extensions;
+
 create table public.entries (
   id uuid primary key default gen_random_uuid(),
   content text not null,
-  embedding extensions.vector(1536),
+  embedding vector(1536),
   tsv tsvector generated always as (to_tsvector('english', content)) stored,
   source_type text not null check (source_type in ('voice_memo', 'notion_note')),
   source_file text,
