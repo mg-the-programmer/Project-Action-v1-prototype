@@ -20,7 +20,7 @@ def test_transcribe_file_writes_chunking_compatible_json(tmp_path: Path) -> None
     response.__exit__ = Mock(return_value=False)
     opener = Mock(return_value=response)
 
-    result = transcribe.transcribe_file(audio, "test-key", opener=opener)
+    result = transcribe.transcribe_file(audio, "test-hcaptcha-token", opener=opener)
 
     assert result == audio.with_suffix(".json")
     assert json.loads(result.read_text(encoding="utf-8")) == {
@@ -32,7 +32,8 @@ def test_transcribe_file_writes_chunking_compatible_json(tmp_path: Path) -> None
         ],
     }
     request = opener.call_args.args[0]
-    assert request.get_header("Xi-api-key") == "test-key"
+    assert request.get_header("Xi-api-key") is None
+    assert request.full_url.endswith("allow_unauthenticated=1&hcaptcha_token=test-hcaptcha-token")
     assert b'name="model_id"' in request.data and b"scribe_v2" in request.data
 
 
@@ -43,7 +44,7 @@ def test_transcribe_file_skips_existing_transcript(tmp_path: Path) -> None:
     transcript.write_text("{}", encoding="utf-8")
     opener = Mock()
 
-    assert transcribe.transcribe_file(audio, "test-key", opener=opener) is None
+    assert transcribe.transcribe_file(audio, "test-hcaptcha-token", opener=opener) is None
     opener.assert_not_called()
 
 
@@ -53,10 +54,10 @@ def test_transcribe_file_explains_api_failure(tmp_path: Path) -> None:
     from urllib.error import HTTPError
     from io import BytesIO
 
-    opener = Mock(side_effect=HTTPError("https://example.test", 401, "Unauthorized", {}, BytesIO(b"Invalid API key")))
+    opener = Mock(side_effect=HTTPError("https://example.test", 401, "Unauthorized", {}, BytesIO(b"Invalid hCaptcha token")))
 
     with pytest.raises(RuntimeError, match="ElevenLabs transcription failed for memo.m4a.*401"):
-        transcribe.transcribe_file(audio, "bad-key", opener=opener)
+        transcribe.transcribe_file(audio, "test-hcaptcha-token", opener=opener)
 
 
 def test_input_files_rejects_unsupported_file(tmp_path: Path) -> None:

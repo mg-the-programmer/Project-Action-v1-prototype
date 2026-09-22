@@ -15,4 +15,4 @@
 
 ## Comments
 
-- 2026-09-22: Implemented `scripts/transcribe.py` with ElevenLabs Scribe v2 instead of Whisper, as requested. The command accepts one audio file or a folder, writes idempotent timestamp JSON transcripts, and has unit coverage for successful output, skipped output, API failure, and unsupported formats. Live verification remains pending an `ELEVENLABS_API_KEY` and a real audio file under `raw/audio/`.
+- 2026-09-22: Implemented `scripts/transcribe.py` with ElevenLabs Scribe v2 instead of Whisper, as requested. The command accepts one audio file or a folder, writes idempotent timestamp JSON transcripts, and has unit coverage for successful output, skipped output, API failure, and unsupported formats. Live verification remains pending an `HCAPTCHA_TOKEN` and a real audio file under `raw/audio/`.

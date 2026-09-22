@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -92,19 +93,17 @@ def _append_segment(segments: list[dict[str, Any]], words: list[dict[str, Any]])
 
 
 def post_to_elevenlabs(
-    audio: Path, api_key: str, opener: Callable[..., Any] = urlopen
+    audio: Path, hcaptcha_token: str, opener: Callable[..., Any] = urlopen
 ) -> dict[str, Any]:
     """Send one audio file to ElevenLabs' Scribe v2 API."""
     boundary = "----personal-kb-transcription-boundary"
     content_type = mimetypes.guess_type(audio.name)[0] or "application/octet-stream"
     body = _multipart_body(audio, content_type, boundary)
+    api_url = f"{ELEVENLABS_STT_URL}?{urlencode({'allow_unauthenticated': '1', 'hcaptcha_token': hcaptcha_token})}"
     request = Request(
-        ELEVENLABS_STT_URL,
+        api_url,
         data=body,
-        headers={
-            "xi-api-key": api_key,
-            "Content-Type": f"multipart/form-data; boundary={boundary}",
-        },
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         method="POST",
     )
     try:
@@ -131,14 +130,14 @@ def _multipart_body(audio: Path, content_type: str, boundary: str) -> bytes:
 
 
 def transcribe_file(
-    audio: Path, api_key: str, opener: Callable[..., Any] | None = None
+    audio: Path, hcaptcha_token: str, opener: Callable[..., Any] | None = None
 ) -> Path | None:
     """Transcribe one file and return its JSON path, or ``None`` if it exists."""
     transcript = audio.with_suffix(".json")
     if transcript.exists():
         return None
     try:
-        data = post_to_elevenlabs(audio, api_key, opener=opener or urlopen)
+        data = post_to_elevenlabs(audio, hcaptcha_token, opener=opener or urlopen)
     except TranscriptionApiError as error:
         raise RuntimeError(
             f"ElevenLabs transcription failed for {audio.name} (HTTP {error.status}): {error.detail}"
@@ -154,9 +153,9 @@ def main() -> int:
     parser.add_argument("input", type=Path, help="An audio file or a folder of audio files")
     arguments = parser.parse_args()
     load_environment_file(REPOSITORY_ROOT / ".env")
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        print("ELEVENLABS_API_KEY is required. Add it to .env or your environment.", file=sys.stderr)
+    hcaptcha_token = os.environ.get("HCAPTCHA_TOKEN")
+    if not hcaptcha_token:
+        print("HCAPTCHA_TOKEN is required. Add it to .env or your environment.", file=sys.stderr)
         return 2
     try:
         files = input_files(arguments.input)
@@ -169,7 +168,7 @@ def main() -> int:
     failed = 0
     for audio in files:
         try:
-            output = transcribe_file(audio, api_key)
+            output = transcribe_file(audio, hcaptcha_token)
             print(f"Skipped {audio.name}" if output is None else f"Wrote {output}")
         except RuntimeError as error:
             failed += 1
