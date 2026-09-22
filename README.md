@@ -10,7 +10,7 @@
    python -m pip install -e .
    ```
 
-2. Copy `.env.example` to `.env`. Set `SUPABASE_URL` and `SUPABASE_KEY` to the cloud project URL and anon key. `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, and `OPENAI_BASE_URL` configure the OpenAI client used by the later pipeline steps; `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` provide their credentials.
+2. Copy `.env.example` to `.env`. Set `SUPABASE_URL` and `SUPABASE_KEY` to the cloud project URL and anon key. `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, and `OPENAI_BASE_URL` configure the OpenAI client used by the later pipeline steps; `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ELEVENLABS_API_KEY` provide their credentials.
 3. Install the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) as a project dependency, then authenticate, link the cloud project, and push the migration:
 
    ```powershell
@@ -27,6 +27,16 @@
    ```
 
 The smoke test reads `.env` automatically and inserts then retrieves a temporary entry through the cloud Supabase API.
+
+## Audio transcription
+
+Transcribe one supported audio file or all supported files in a folder with ElevenLabs Scribe v2:
+
+```powershell
+python scripts/transcribe.py raw/audio
+```
+
+The command writes a `<name>.json` transcript beside each audio file, with text, timestamped segments, and timestamped words. Existing JSON transcripts are skipped.
 
 ## Schema
 
