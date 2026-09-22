@@ -46,15 +46,16 @@ retrieval_logs (
 
 **Blocked by:** None (can start immediately)
 
-**Status:** blocked — cloud migration has not been applied
+**Status:** completed
 
-- [ ] Supabase project created with pgvector extension enabled
+- [x] Supabase project created with pgvector extension enabled
 - [x] All three tables defined with correct column types and indexes (ivfflat index on `embedding`, GIN index on `tsv` and `tags`)
 - [x] `.env` file documented with required keys (`SUPABASE_URL`, `SUPABASE_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
 - [x] `pyproject.toml` created with all dependencies (`supabase`, `openai`, `anthropic`, `fastapi`, `uvicorn`, `mcp`, `pytest`)
-- [ ] Smoke-test script inserts one dummy entry row and retrieves it back successfully
+- [x] Smoke-test script inserts one dummy entry row and retrieves it back successfully
 
 ## Comments
 
 - 2026-09-21: Added the Supabase migration, cloud configuration, environment template, Python project, and smoke-test script. Dependencies are installed in `.venv`. The cloud smoke test reached the configured project but received `PGRST205` because `public.entries` has not yet been created. Apply the migration with `supabase link --project-ref <project-ref>` and `supabase db push`, then rerun `python scripts/smoke_test.py`.
 - 2026-09-21: The first cloud migration attempt found pgvector installed outside the `extensions` schema. The migration now searches both `public` and `extensions`, so it can use the existing extension without relocating it.
+- 2026-09-22: Confirmed the linked cloud database is up to date with `supabase db push`. Ran `scripts/smoke_test.py` against the cloud project: it inserted an `entries` row and retrieved the identical row by ID.
