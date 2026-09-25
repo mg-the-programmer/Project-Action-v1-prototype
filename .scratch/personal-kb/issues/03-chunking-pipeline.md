@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — Whisper transcription pipeline step
 
-**Status:** ready-for-agent
+**Status:** complete
 
 - [ ] Audio chunking — `--strategy pause`: groups Whisper segments separated by >2s gap into one chunk; each chunk carries `audio_offset` (start time of first segment) and `chunk_index`
 - [ ] Audio chunking — `--strategy semantic`: splits on cosine similarity drop between consecutive sentence embeddings; each chunk carries `audio_offset` and `chunk_index`
