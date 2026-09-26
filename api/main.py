@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from mcp_server import server as knowledge_base
@@ -79,6 +80,33 @@ def list_entries(
 def entry_context(entry_id: str) -> list[dict[str, Any]]:
     """Return the target entry and adjacent chunks from the same source."""
     return _domain_call(knowledge_base.get_entry_context, entry_id)
+
+
+@app.get("/entries/{entry_id}/audio")
+def entry_audio(entry_id: str) -> FileResponse:
+    """Serve the local voice-memo source so a dashboard timestamp can seek it."""
+    context = _domain_call(knowledge_base.get_entry_context, entry_id)
+    entry = next((item for item in context if item.get("id") == entry_id), None)
+    source_file = entry.get("source_file") if isinstance(entry, dict) else None
+    if not isinstance(source_file, str) or not source_file:
+        raise HTTPException(status_code=404, detail="No source file exists for the supplied entry")
+    source_path = _resolve_audio_source(source_file)
+    if source_path is None:
+        raise HTTPException(status_code=404, detail="The source audio file is unavailable")
+    return FileResponse(source_path)
+
+
+def _resolve_audio_source(source_file: str) -> Path | None:
+    """Find an original memo beside its transcript without allowing path escape."""
+    transcript_path = (REPOSITORY_ROOT / source_file).resolve()
+    if REPOSITORY_ROOT not in transcript_path.parents:
+        return None
+    original_path = Path(str(transcript_path).removesuffix(".json"))
+    candidates = [
+        original_path,
+        *(path for path in original_path.parent.glob(f"{original_path.name}.*") if path.suffix.lower() in {".m4a", ".mp3", ".mp4", ".wav", ".webm"}),
+    ]
+    return next((path for path in candidates if path.is_file()), None)
 
 
 @app.post("/ingest")

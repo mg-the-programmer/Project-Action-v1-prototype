@@ -35,4 +35,5 @@ export const dashboardApi = {
   triggerWords: () => request<TriggerWord[]>("/trigger-words"),
   addTriggerWord: (word: string) => request<TriggerWord>("/trigger-words", { method: "POST", body: JSON.stringify({ word }) }),
   removeTriggerWord: (word: string) => request<{ word: string }>(`/trigger-words/${encodeURIComponent(word)}`, { method: "DELETE" }),
+  audioUrl: (entryId: string, offset: number) => `${API_URL}/entries/${encodeURIComponent(entryId)}/audio#t=${Math.floor(offset)}`,
 };

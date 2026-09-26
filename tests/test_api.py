@@ -79,6 +79,17 @@ def test_context_ingest_and_trigger_words_delegate_to_existing_operations(monkey
     assert asgi_request(main.app, "DELETE", "/trigger-words/new%20term").json()["word"] == "new term"
 
 
+def test_entry_audio_uses_the_entry_source_from_the_shared_boundary(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        main.knowledge_base,
+        "get_entry_context",
+        lambda entry_id: [{"id": entry_id, "source_file": "README.md"}],
+    )
+    response = asgi_request(main.app, "GET", "/entries/entry-1/audio")
+    assert response.status_code == 200
+    assert "Local setup" in response.text
+
+
 def test_retrieval_logs_are_limited_and_sorted(monkeypatch: Any) -> None:
     database = Database([{"id": "log-1"}])
     monkeypatch.setattr(main, "create_supabase_client", lambda: database)

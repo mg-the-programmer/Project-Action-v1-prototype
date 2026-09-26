@@ -10,13 +10,16 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
     "react": "latest",
     "react-dom": "latest",
     "tailwindcss": "^3.4.17",
-    "postcss": "latest",
-    "autoprefixer": "latest"
+    "typescript": "latest",
+    "vite": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0"
+  }
 }
