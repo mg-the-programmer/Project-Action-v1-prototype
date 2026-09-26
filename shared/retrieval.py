@@ -47,7 +47,6 @@ def search_entries(
     """
     _validate_search_arguments(query, top_k, weight)
     database = client or create_supabase_client()
-    candidate_count = max(top_k * 3, 15)
     semantic_rows: list[dict[str, Any]] = []
     exact_rows: list[dict[str, Any]] = []
 
@@ -58,18 +57,18 @@ def search_entries(
         semantic_rows = _response_rows(
             database.rpc(
                 "match_entries_by_embedding",
-                {"query_embedding": embeddings[0], "match_count": candidate_count},
+                {"query_embedding": embeddings[0]},
             ).execute()
         )
     if weight < 1:
         exact_rows = _response_rows(
             database.rpc(
                 "match_entries_by_text",
-                {"search_query": query, "match_count": candidate_count},
+                {"search_query": query},
             ).execute()
         )
 
-    trigger_words = _trigger_words(database)
+    trigger_words = _trigger_words(database) if weight < 1 else []
     return _blend_results(semantic_rows, exact_rows, weight, trigger_words, top_k)
 
 
@@ -104,9 +103,9 @@ def _blend_results(
 ) -> list[dict[str, Any]]:
     combined: dict[str, dict[str, Any]] = {}
     for row in semantic_rows:
-        _add_component(combined, row, "semantic_score")
+        _merge_scored_row(combined, row, "semantic_score")
     for row in exact_rows:
-        _add_component(combined, row, "exact_score")
+        _merge_scored_row(combined, row, "exact_score")
 
     matchers = [_trigger_matcher(word) for word in trigger_words]
     results: list[dict[str, Any]] = []
@@ -121,7 +120,7 @@ def _blend_results(
     return sorted(results, key=lambda item: (-item["blended_score"], str(item["id"])))[:top_k]
 
 
-def _add_component(combined: dict[str, dict[str, Any]], row: dict[str, Any], score_field: str) -> None:
+def _merge_scored_row(combined: dict[str, dict[str, Any]], row: dict[str, Any], score_field: str) -> None:
     entry_id = row.get("id")
     if entry_id is None:
         raise ValueError("Database search returned an entry without an id")
@@ -134,4 +133,4 @@ def _add_component(combined: dict[str, dict[str, Any]], row: dict[str, Any], sco
 
 
 def _trigger_matcher(word: str) -> re.Pattern[str]:
-    return re.compile(r"(?<!\\w)" + re.escape(word) + r"(?!\\w)", re.IGNORECASE)
+    return re.compile(r"(?<!\w)" + re.escape(word) + r"(?!\w)", re.IGNORECASE)
