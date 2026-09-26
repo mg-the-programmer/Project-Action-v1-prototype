@@ -119,37 +119,50 @@ def get_entry_context(entry_id: str, *, client: EntriesClient | None = None) -> 
     return query.execute().data or []
 
 
+def list_entries(
+    *,
+    tag: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    source_type: str | None = None,
+    client: EntriesClient | None = None,
+) -> list[dict[str, Any]]:
+    """Return entries matching the supplied dashboard and MCP filters."""
+    if tag is not None:
+        _require_text("tag", tag)
+    if start is not None and end is not None:
+        _validate_date_range(start, end)
+    elif start is not None:
+        _require_text("start", start)
+        _parse_datetime(start)
+    elif end is not None:
+        _require_text("end", end)
+        _parse_datetime(end)
+    if source_type is not None and source_type not in ALLOWED_SOURCE_TYPES:
+        raise ValueError("source_type must be voice_memo or notion_note")
+    database = client or create_supabase_client()
+    query = database.table("entries").select(CONTEXT_FIELDS)
+    if tag is not None:
+        query = query.contains("tags", [tag.strip()])
+    if start is not None:
+        query = query.gte("recorded_at", start)
+    if end is not None:
+        query = query.lte("recorded_at", end)
+    if source_type is not None:
+        query = query.eq("source_type", source_type)
+    return query.order("recorded_at", desc=True).execute().data or []
+
+
 def list_by_tag(tag: str, *, client: EntriesClient | None = None) -> list[dict[str, Any]]:
     """Return entries carrying ``tag``, most recently recorded first."""
-    _require_text("tag", tag)
-    database = client or create_supabase_client()
-    return (
-        database.table("entries")
-        .select(CONTEXT_FIELDS)
-        .contains("tags", [tag.strip()])
-        .order("recorded_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
+    return list_entries(tag=tag, client=client)
 
 
 def list_by_date_range(
     start: str, end: str, *, client: EntriesClient | None = None
 ) -> list[dict[str, Any]]:
     """Return entries recorded inclusively between two ISO-8601 timestamps."""
-    _validate_date_range(start, end)
-    database = client or create_supabase_client()
-    return (
-        database.table("entries")
-        .select(CONTEXT_FIELDS)
-        .gte("recorded_at", start)
-        .lte("recorded_at", end)
-        .order("recorded_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
+    return list_entries(start=start, end=end, client=client)
 
 
 def ingest_entry(
