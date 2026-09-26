@@ -70,7 +70,7 @@ def chunk_transcript_file(
         raise ValueError(f"Unsupported audio strategy: {strategy}")
     chunks = _audio_chunks(groups, words, transcript_path, strategy)
     output = transcript_path.with_name(f"{transcript_path.stem}.{strategy}{CHUNK_OUTPUT_SUFFIX}")
-    _write_chunks(output, chunks)
+    write_chunks(output, chunks)
     return output
 
 
@@ -95,7 +95,7 @@ def chunk_markdown_file(markdown_path: Path) -> Path:
         for index, content in enumerate(contents)
     ]
     output = markdown_path.with_name(f"{markdown_path.stem}{CHUNK_OUTPUT_SUFFIX}")
-    _write_chunks(output, chunks)
+    write_chunks(output, chunks)
     return output
 
 
@@ -212,7 +212,8 @@ def openai_embedder() -> EmbeddingProvider:
     return embed_texts
 
 
-def _write_chunks(path: Path, chunks: list[dict[str, Any]]) -> None:
+def write_chunks(path: Path, chunks: list[dict[str, Any]]) -> None:
+    """Persist chunk rows using the shared chunk-file representation."""
     path.write_text(json.dumps(chunks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 

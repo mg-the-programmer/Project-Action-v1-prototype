@@ -50,6 +50,15 @@ python scripts/chunk.py raw/notes
 
 Audio outputs are written beside each transcript as `<name>.pause.chunks.json` or `<name>.semantic.chunks.json`, so both strategies can be compared on the same source. Markdown outputs use `<name>.chunks.json`. The semantic strategy requires `OPENAI_API_KEY` and uses the configured `OPENAI_EMBEDDING_MODEL` (defaulting to `text-embedding-3-large`).
 
+Compare the boundaries from three to five existing voice-memo transcripts before choosing a default:
+
+```powershell
+python scripts/compare_chunking.py datasets/voice_journals --limit 3 --dry-run
+python scripts/compare_chunking.py raw/audio --limit 3 --transcribe
+```
+
+The report aligns each chunk start as `chunk number: first 100 characters` and labels starts belonging to only one strategy as split/merge disagreements. Omit `--dry-run` to embed, tag, and upsert both strategies; each stays independently queryable by `chunk_strategy`. Use `--store-only` to verify strategy storage without remote enrichment.
+
 ## Full ingestion
 
 Run the complete pipeline for a folder of audio files or exported Notion Markdown:
