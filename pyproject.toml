@@ -18,3 +18,4 @@ dependencies = [
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]
+markers = ["integration: queries the configured Supabase database without writing records"]

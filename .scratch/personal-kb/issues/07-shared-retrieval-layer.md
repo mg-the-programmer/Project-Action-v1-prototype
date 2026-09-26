@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 — Store pipeline step + end-to-end ingestion
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] `search_entries(query, top_k=15, weight=0.7)` function: embeds the query, runs pgvector similarity search, runs tsvector full-text search, merges and deduplicates results, applies trigger word boost (entries whose content contains a trigger word rank higher), returns top_k results ordered by blended score
 - [ ] Each result includes: `id`, `content`, `source_type`, `source_file`, `audio_offset`, `tags`, `mood`, `topic_label`, `moment_type`, `visual_context`, `recorded_at`, `blended_score`
