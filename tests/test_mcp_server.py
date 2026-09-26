@@ -50,7 +50,83 @@ def test_registers_core_feedback_and_trigger_word_tools() -> None:
         "search_entries", "get_entry_context", "list_by_tag", "list_by_date_range", "ingest_entry",
         "log_feedback", "rate_retrieval", "add_trigger_word", "list_trigger_words", "journal_and_recall",
         "push_to_notion",
+        "get_persona_prompt", "export_memory_snapshot",
     }
+
+
+def test_get_persona_prompt_builds_two_pasteable_formats_from_recent_entries() -> None:
+    database = FakeDatabase([Response([
+        {"content": "My reverse honeypot analogy helps cybersecurity workshops.", "tags": None, "mood": "excited", "topic_label": "cybersecurity", "recorded_at": "2026-09-26T10:00:00+00:00"},
+        {"content": "The 3-question filter is my project decision framework.", "tags": ["personal", "business"], "mood": "reflective", "topic_label": "business-ideas", "recorded_at": "2026-09-25T10:00:00+00:00"},
+    ])])
+    prompts: list[str] = []
+
+    async def fake_generator(instruction: str, prompt: str) -> str:
+        assert "Domain expertise" in instruction
+        prompts.append(prompt)
+        return "## Domain expertise\nCybersecurity teaching\n\n## Communication style\nEnergetic, analogy-led\n\n## Recurring phrases and analogies\n- reverse honeypot\n- 3-question filter\n- mass-time\n\n## Active projects and interests\n- Personal Knowledge Base"
+
+    result = asyncio.run(server.get_persona_prompt(client=database, generator=fake_generator))
+
+    assert result["system_prompt"].startswith("You are assisting Manigandan")
+    assert result["user_context"].startswith("# Context about Manigandan")
+    assert "reverse honeypot" in result["system_prompt"]
+    assert "Personal Knowledge Base" in result["user_context"]
+    assert "business (1)" in prompts[0]
+    assert ("order", ("recorded_at",), {"desc": True}) in database.queries[0].calls
+    assert ("limit", (100,), {}) in database.queries[0].calls
+
+
+def test_export_memory_snapshot_uses_shared_retrieval_for_a_query() -> None:
+    database = object()
+    retrieval_calls: list[dict[str, Any]] = []
+
+    def fake_retriever(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        assert args == ("cybersecurity teaching",)
+        retrieval_calls.append(kwargs)
+        return [{"content": "Teach reverse honeypot with a hotel-security story.", "tags": ["cybersecurity"], "mood": "curious", "topic_label": "cybersecurity", "recorded_at": "2026-09-20T10:00:00+00:00"}]
+
+    async def fake_generator(_: str, prompt: str) -> str:
+        assert "cybersecurity teaching" in prompt
+        return "# Relevant memory snapshot\n\n## Cybersecurity teaching\nUse the reverse honeypot hotel-security story."
+
+    result = asyncio.run(server.export_memory_snapshot(
+        query="cybersecurity teaching", client=database, retriever=fake_retriever, generator=fake_generator,
+    ))
+
+    assert result == "# Relevant memory snapshot\n\n## Cybersecurity teaching\nUse the reverse honeypot hotel-security story."
+    assert retrieval_calls == [{"top_k": 15, "client": database}]
+
+
+def test_export_memory_snapshot_filters_entries_by_topic_and_date_range() -> None:
+    database = FakeDatabase([Response([{"content": "A workshop plan.", "tags": ["cybersecurity"], "mood": "excited", "topic_label": "cybersecurity", "recorded_at": "2026-09-20T10:00:00+00:00"}])])
+
+    async def fake_generator(_: str, __: str) -> str:
+        return "# Memory snapshot\n\n## Cybersecurity\nA workshop plan."
+
+    result = asyncio.run(server.export_memory_snapshot(
+        topic="cybersecurity", date_range=["2026-09-01T00:00:00+00:00", "2026-09-30T00:00:00+00:00"],
+        client=database, generator=fake_generator,
+    ))
+
+    assert result.startswith("# Memory snapshot")
+    calls = database.queries[0].calls
+    assert ("eq", ("topic_label", "cybersecurity"), {}) in calls
+    assert ("gte", ("recorded_at", "2026-09-01T00:00:00+00:00"), {}) in calls
+    assert ("lte", ("recorded_at", "2026-09-30T00:00:00+00:00"), {}) in calls
+
+
+def test_export_memory_snapshot_without_filters_requests_a_full_life_briefing() -> None:
+    database = FakeDatabase([Response([{"content": "Building the personal knowledge base.", "tags": ["genai"], "mood": "excited", "topic_label": "ai-ml", "recorded_at": "2026-09-26T10:00:00+00:00"}])])
+
+    async def fake_generator(_: str, prompt: str) -> str:
+        assert "top recurring themes, active projects, key decisions, and recent mood trends" in prompt
+        return "# Full memory snapshot\n\n## Active projects\nPersonal Knowledge Base"
+
+    result = asyncio.run(server.export_memory_snapshot(client=database, generator=fake_generator))
+
+    assert result.startswith("# Full memory snapshot")
+    assert not any(call[0] == "limit" for call in database.queries[0].calls)
 
 
 def test_get_entry_context_limits_to_adjacent_chunks_in_the_same_source() -> None:

@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — Shared retrieval layer, 08 — MCP server core tools
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Tools:**
 
@@ -22,8 +22,18 @@
   - If nothing provided: returns a full life summary — top recurring themes, active projects, key decisions, recent mood trends
   - Returns a clean markdown string ready to paste as context into any chat
 
-- [ ] `get_persona_prompt()` with no args returns both `system_prompt` and `user_context` strings derived from real entries
-- [ ] Persona output includes at least: domain expertise, communication style, 3–5 recurring phrases/analogies, active projects
-- [ ] `export_memory_snapshot()` with no args returns a readable markdown summary of the full KB
-- [ ] `export_memory_snapshot(query="cybersecurity teaching")` returns a focused summary of relevant entries
+- [x] `get_persona_prompt()` with no args returns both `system_prompt` and `user_context` strings derived from real entries
+- [x] Persona output includes at least: domain expertise, communication style, 3–5 recurring phrases/analogies, active projects
+- [x] `export_memory_snapshot()` with no args returns a readable markdown summary of the full KB
+- [x] `export_memory_snapshot(query="cybersecurity teaching")` returns a focused summary of relevant entries
 - [ ] Both tools verified by pasting their output into a fresh Claude.ai session and confirming the AI has accurate context about Manigandan's background and projects
+
+## Comments
+
+- 2026-09-26: Implemented the `get_persona_prompt` and `export_memory_snapshot` MCP tools using the project's configured OpenAI-compatible chat provider (`OPENAI_CHAT_MODEL` / `OPENAI_BASE_URL`), rather than an Anthropic client. Persona generation reads the latest 100 entries, includes tag-frequency context, and returns both `system_prompt` and `user_context`. Snapshot generation uses the shared retrieval layer for `query`, filters the database for `topic` and/or `date_range`, and produces paste-ready Markdown.
+- 2026-09-26: `./.venv/Scripts/python.exe -m pytest tests/test_mcp_server.py -q` — 23 passed. This covers both MCP registrations, recency/tag-frequency persona inputs and dual output formats, query retrieval, topic/date filtering, and unfiltered full-KB briefing inputs.
+- 2026-09-26: `./.venv/Scripts/python.exe -m pytest -q` — 69 passed, 3 skipped; the 18 warnings are existing Supabase SDK deprecations in live API smoke tests.
+- 2026-09-26: Live configured-service check: loaded `.env`, read `live_recent_entries=100` from Supabase, generated a persona through the configured OpenAI-compatible API (`live_persona_system_chars=2847`, `live_persona_user_context_chars=2674`) and confirmed all required sections were present. A live `export_memory_snapshot(query="cybersecurity teaching")` completed through OpenAI embeddings, Supabase hybrid retrieval, and chat generation (`live_query_snapshot_chars=1017`).
+- 2026-09-26: Live configured-service check: `export_memory_snapshot()` without filters read the full configured KB (100 entries at validation time) and generated a Markdown briefing (`live_full_snapshot_chars=5010`, heading present).
+- 2026-09-26: Two-axis review against `f6c4f75...9a362ee`: Standards reported no hard breaches and two heuristic findings; renamed the generic chat-generation function and introduced `SnapshotFilter` to remove duplicated filter state. Spec review found full-KB snapshots were incorrectly capped at 100 entries; the cap now applies only to the ticket-required persona source selection, while snapshots read all matching entries. The review also confirmed the Claude.ai paste criterion remains an external UI block.
+- 2026-09-26: The first four acceptance criteria are proven by the focused tests and configured live calls above. The final Claude.ai paste-and-confirm criterion is an external browser/UI validation that cannot be performed from this repository task; it remains unchecked, so the ticket is intentionally not marked complete.

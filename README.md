@@ -79,10 +79,14 @@ The `entries` table stores one knowledge-base chunk, its optional 1536-dimension
 ## Claude Desktop MCP server
 
 The stdio server exposes `search_entries`, `get_entry_context`, `list_by_tag`,
-`list_by_date_range`, `ingest_entry`, `log_feedback`, and `rate_retrieval` to
-Claude Desktop. `search_entries` returns both the results and a `log_id` that
-can be passed to `rate_retrieval`. It loads the project `.env` itself, then
-runs as:
+`list_by_date_range`, `ingest_entry`, `log_feedback`, `rate_retrieval`,
+`get_persona_prompt`, and `export_memory_snapshot` to Claude Desktop.
+`get_persona_prompt` returns pasteable `system_prompt` and `user_context`
+formats regenerated from the latest 100 entries; `export_memory_snapshot`
+returns a focused (`query`, `topic`, and optional two-item `date_range`) or
+full-KB Markdown briefing. `search_entries` returns both the results and a
+`log_id` that can be passed to `rate_retrieval`. It loads the project `.env`
+itself, then runs as:
 
 ```powershell
 .\.venv\Scripts\python.exe mcp_server\server.py
