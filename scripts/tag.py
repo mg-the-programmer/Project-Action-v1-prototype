@@ -1,4 +1,4 @@
-"""Classify chunks with Claude Haiku and retain proposed taxonomy extensions."""
+"""Classify chunks with the configured OpenAI-compatible chat model."""
 from __future__ import annotations
 
 import argparse
@@ -65,17 +65,25 @@ def _unique(values: Any) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-async def claude_tag(content: str) -> dict[str, Any]:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+async def openai_tag(content: str) -> dict[str, Any]:
+    """Return taxonomy metadata using the configured OpenAI-compatible client."""
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required for tagging")
-    from anthropic import AsyncAnthropic
-    response = await AsyncAnthropic(api_key=api_key).messages.create(model=os.environ.get("ANTHROPIC_TAG_MODEL", "claude-haiku-4-5"), max_tokens=300, messages=[{"role": "user", "content": prompt(content)}])
-    text = response.content[0].text.strip()
+        raise RuntimeError("OPENAI_API_KEY is required for tagging")
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(api_key=api_key, base_url=os.environ.get("OPENAI_BASE_URL") or None)
+    response = await client.chat.completions.create(
+        model=os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+        messages=[{"role": "user", "content": prompt(content)}],
+    )
+    text = response.choices[0].message.content or ""
     return normalize_tagging(json.loads(text.removeprefix("```json").removesuffix("```").strip()))
 
 
-async def enrich_chunks(chunks: list[dict[str, Any]], tagger: Callable[[str], Awaitable[dict[str, Any]]] = claude_tag) -> int:
+async def enrich_chunks(
+    chunks: list[dict[str, Any]], tagger: Callable[[str], Awaitable[dict[str, Any]]] = openai_tag
+) -> int:
     pending = [chunk for chunk in chunks if not all(field in chunk for field in TAGGING_FIELDS)]
     semaphore = asyncio.Semaphore(CONCURRENCY)
     async def tag_chunk(chunk: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -89,7 +97,9 @@ async def enrich_chunks(chunks: list[dict[str, Any]], tagger: Callable[[str], Aw
     return len(pending)
 
 
-async def tag_file(path: Path, tagger: Callable[[str], Awaitable[dict[str, Any]]]=claude_tag) -> tuple[Path, int]:
+async def tag_file(
+    path: Path, tagger: Callable[[str], Awaitable[dict[str, Any]]] = openai_tag
+) -> tuple[Path, int]:
     chunks = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(chunks, list):
         raise ValueError(f"Chunk file must contain an array: {path}")

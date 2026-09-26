@@ -10,7 +10,7 @@
    python -m pip install -e .
    ```
 
-2. Copy `.env.example` to `.env`. Set `SUPABASE_URL` and `SUPABASE_KEY` to the cloud project URL and anon key. `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, and `OPENAI_BASE_URL` configure the OpenAI client used by the later pipeline steps; `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `HCAPTCHA_TOKEN` provide their credentials.
+2. Copy `.env.example` to `.env`. Set `SUPABASE_URL` and `SUPABASE_KEY` to the cloud project URL and anon key. `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, and `OPENAI_BASE_URL` configure the OpenAI-compatible clients used by the later pipeline steps; `OPENAI_API_KEY` and `HCAPTCHA_TOKEN` provide their credentials.
 3. Install the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) as a project dependency, then authenticate, link the cloud project, and push the migration:
 
    ```powershell

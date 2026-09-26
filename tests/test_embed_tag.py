@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import sys
+from types import ModuleType, SimpleNamespace
 
 from scripts import embed, tag
+from shared import clients
 
 
 def test_embed_is_batched_and_idempotent() -> None:
@@ -30,6 +33,74 @@ def test_embed_replaces_an_invalid_existing_vector() -> None:
     chunks = [{"content": "repair me", "embedding": [0.1]}]
     assert embed.enrich_chunks(chunks, lambda _: [[0.0] * 1536]) == 1
     assert chunks[0]["embedding"] == [0.0] * 1536
+
+
+def test_openai_tagger_uses_the_configured_compatible_client(monkeypatch) -> None:
+    client_arguments: dict[str, object] = {}
+    request_arguments: dict[str, object] = {}
+
+    class Completions:
+        async def create(self, **kwargs):
+            request_arguments.update(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content='{"tags":["personal"],"suggested_tags":[],"mood":"curious",'
+                            '"topic_label":"personal-growth","moment_type":"idea","visual_context":null}'
+                        )
+                    )
+                ]
+            )
+
+    class AsyncOpenAI:
+        def __init__(self, **kwargs):
+            client_arguments.update(kwargs)
+            self.chat = SimpleNamespace(completions=Completions())
+
+    module = ModuleType("openai")
+    module.AsyncOpenAI = AsyncOpenAI
+    monkeypatch.setitem(sys.modules, "openai", module)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://compatible.example/v1")
+    monkeypatch.setenv("OPENAI_CHAT_MODEL", "configured-chat-model")
+
+    metadata = asyncio.run(tag.openai_tag("A personal idea."))
+
+    assert client_arguments == {"api_key": "test-key", "base_url": "https://compatible.example/v1"}
+    assert request_arguments["model"] == "configured-chat-model"
+    assert request_arguments["messages"] == [{"role": "user", "content": tag.prompt("A personal idea.")}]
+    assert metadata["topic_label"] == "personal-growth"
+
+
+def test_embedder_uses_the_configured_compatible_client(monkeypatch) -> None:
+    client_arguments: dict[str, object] = {}
+    request_arguments: dict[str, object] = {}
+
+    class Embeddings:
+        def create(self, **kwargs):
+            request_arguments.update(kwargs)
+            return SimpleNamespace(data=[SimpleNamespace(embedding=[0.0] * 1536)])
+
+    class OpenAI:
+        def __init__(self, **kwargs):
+            client_arguments.update(kwargs)
+            self.embeddings = Embeddings()
+
+    module = ModuleType("openai")
+    module.OpenAI = OpenAI
+    monkeypatch.setitem(sys.modules, "openai", module)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://compatible.example/v1")
+    monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "configured-embedding-model")
+
+    assert clients.embed_texts(["embed me"]) == [[0.0] * 1536]
+    assert client_arguments == {"api_key": "test-key", "base_url": "https://compatible.example/v1"}
+    assert request_arguments == {
+        "model": "configured-embedding-model",
+        "input": ["embed me"],
+        "dimensions": 1536,
+    }
 
 
 def test_tag_normalizes_unknown_values_and_preserves_suggestion() -> None:
