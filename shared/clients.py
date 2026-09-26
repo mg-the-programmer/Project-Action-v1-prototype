@@ -2,16 +2,9 @@
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
 from typing import Any
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _without_repository_supabase_package() -> None:
-    """Allow importing the installed SDK despite the local ``supabase`` directory."""
-    sys.path[:] = [path for path in sys.path if Path(path or ".").resolve() != REPOSITORY_ROOT]
+from supabase import create_client
 
 
 def create_supabase_client() -> Any:
@@ -20,9 +13,6 @@ def create_supabase_client() -> Any:
     key = os.environ.get("SUPABASE_KEY")
     if not url or not key:
         raise RuntimeError("SUPABASE_URL and SUPABASE_KEY are required for storage")
-    _without_repository_supabase_package()
-    from supabase import create_client
-
     return create_client(url, key)
 
 

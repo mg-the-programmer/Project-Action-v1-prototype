@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from scripts.transcribe import REPOSITORY_ROOT, load_environment_file
+from shared import clients
 from shared.clients import create_supabase_client, embed_texts
 from shared.retrieval import DEFAULT_TRIGGER_WORD_BONUS, _trigger_matcher, search_entries
 
@@ -105,6 +106,19 @@ def test_search_rejects_invalid_arguments() -> None:
         search_entries("valid", top_k=0, client=FakeDatabase())
     with pytest.raises(ValueError, match="weight"):
         search_entries("valid", weight=1.1, client=FakeDatabase())
+
+
+def test_creating_a_supabase_client_does_not_mutate_the_process_import_path(monkeypatch: Any) -> None:
+    """Concurrent API requests must not alter the interpreter's shared importer state."""
+    import sys
+
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", "test-key")
+    monkeypatch.setattr(clients, "create_client", lambda url, key: (url, key))
+    initial_path = list(sys.path)
+
+    assert create_supabase_client() == ("https://example.supabase.co", "test-key")
+    assert sys.path == initial_path
 
 
 def test_retrieval_result_shape_accepts_an_ignored_voice_journal_sample() -> None:
