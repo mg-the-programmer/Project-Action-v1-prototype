@@ -20,6 +20,7 @@ from scripts.tag import openai_tag
 from scripts.transcribe import load_environment_file
 from shared.clients import create_supabase_client, embed_texts
 from shared.feedback import log_retrieval, rate_retrieval
+from shared.notion import NotionMcpPublisher, NotionPagePublisher
 from shared.retrieval import search_entries as retrieve_entries
 
 CONTEXT_FIELDS = (
@@ -27,6 +28,8 @@ CONTEXT_FIELDS = (
     "tags,mood,topic_label,moment_type,visual_context,recorded_at"
 )
 ALLOWED_SOURCE_TYPES = {"voice_memo", "notion_note"}
+PROMOTED_IDEA_TAGS = {"youtube-idea", "instagram-idea"}
+NOTION_FIELDS = "id,content,source_file,tags,mood,topic_label,recorded_at,notion_page_id"
 
 
 class EntriesClient(Protocol):
@@ -163,6 +166,73 @@ def list_by_date_range(
 ) -> list[dict[str, Any]]:
     """Return entries recorded inclusively between two ISO-8601 timestamps."""
     return list_entries(start=start, end=end, client=client)
+
+
+async def push_to_notion(
+    entry_id: str | None = None, tag: str | None = None, limit: int | None = None, *,
+    client: EntriesClient | None = None, publisher: NotionPagePublisher | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Publish eligible entries once, recording each returned Notion page id."""
+    if entry_id is not None:
+        _require_text("entry_id", entry_id)
+    if tag is not None:
+        _require_text("tag", tag)
+    if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
+        raise ValueError("limit must be a positive integer")
+    database = client or create_supabase_client()
+    query = database.table("entries").select(NOTION_FIELDS).is_("notion_page_id", "null")
+    if entry_id is not None:
+        query = query.eq("id", entry_id.strip())
+    elif tag is not None:
+        query = query.contains("tags", [tag.strip()])
+    else:
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        cutoff = datetime.fromtimestamp(current.timestamp() - 7 * 24 * 60 * 60, timezone.utc)
+        query = query.gte("created_at", cutoff.isoformat())
+    candidates = query.order("recorded_at", desc=True).execute().data or []
+    if entry_id is None and tag is None:
+        candidates = [entry for entry in candidates if PROMOTED_IDEA_TAGS.intersection(entry.get("tags") or [])]
+    if limit is not None:
+        candidates = candidates[:limit]
+    page_publisher = publisher or NotionMcpPublisher()
+    pushed: list[dict[str, str]] = []
+    for entry in candidates:
+        page_id = await page_publisher.create_page(_notion_page(entry))
+        if not isinstance(page_id, str) or not page_id:
+            raise RuntimeError("Notion publisher did not return a page id")
+        database.table("entries").update({"notion_page_id": page_id}).eq("id", entry["id"]).execute()
+        pushed.append({"entry_id": entry["id"], "notion_page_id": page_id})
+    return {"pushed": pushed, "count": len(pushed)}
+
+
+def _notion_page(entry: dict[str, Any]) -> dict[str, Any]:
+    """Map one source-of-truth entry to the approved Notion database schema."""
+    content = entry.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("An entry needs content before it can be pushed to Notion")
+    source_file = entry.get("source_file")
+    properties: dict[str, Any] = {"Title": _first_sentence(content), "Topic": entry.get("topic_label") or "", "Mood": entry.get("mood") or "neutral", "Tags": entry.get("tags") or [], "Source": _source_link(source_file)}
+    if entry.get("recorded_at"):
+        properties["date:Date:start"] = entry["recorded_at"]
+        properties["date:Date:is_datetime"] = 1
+    return {"properties": properties, "content": f"{content.strip()}\n\nSource: {source_file or 'Unknown'}"}
+
+
+def _first_sentence(content: str) -> str:
+    normalized = " ".join(content.split())
+    for delimiter in (". ", "! ", "? "):
+        if delimiter in normalized:
+            return normalized.split(delimiter, 1)[0] + delimiter[0]
+    return normalized[:200]
+
+
+def _source_link(source_file: Any) -> str:
+    if isinstance(source_file, str) and source_file.startswith(("http://", "https://", "file://")):
+        return source_file
+    if isinstance(source_file, str) and source_file:
+        return (REPOSITORY_ROOT / source_file).resolve().as_uri()
+    return REPOSITORY_ROOT.as_uri()
 
 
 def ingest_entry(
@@ -374,6 +444,12 @@ def add_trigger_word_tool(word: str) -> dict[str, Any]:
 def list_trigger_words_tool() -> list[dict[str, Any]]:
     """List trigger words and their added timestamps, newest first."""
     return list_trigger_words()
+
+
+@server.tool(name="push_to_notion")
+async def push_to_notion_tool(entry_id: str | None = None, tag: str | None = None, limit: int | None = None) -> dict[str, Any]:
+    """Push selected or recently promoted entries to the curated Notion database once."""
+    return await push_to_notion(entry_id, tag, limit)
 
 
 def main() -> None:

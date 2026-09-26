@@ -49,6 +49,7 @@ def test_registers_core_feedback_and_trigger_word_tools() -> None:
     assert {tool.name for tool in tools} == {
         "search_entries", "get_entry_context", "list_by_tag", "list_by_date_range", "ingest_entry",
         "log_feedback", "rate_retrieval", "add_trigger_word", "list_trigger_words", "journal_and_recall",
+        "push_to_notion",
     }
 
 
@@ -256,3 +257,72 @@ def test_list_trigger_words_orders_by_newest_added_timestamp() -> None:
     ]
     assert ("select", ("word,added_at",), {}) in database.queries[0].calls
     assert ("order", ("added_at",), {"desc": True}) in database.queries[0].calls
+
+
+def test_push_to_notion_publishes_a_selected_entry_then_records_its_page_id() -> None:
+    class Publisher:
+        def __init__(self) -> None:
+            self.pages: list[dict[str, Any]] = []
+
+        async def create_page(self, page: dict[str, Any]) -> str:
+            self.pages.append(page)
+            return "notion-page-1"
+
+    database = FakeDatabase([
+        Response([{
+            "id": "entry-1", "content": "Publish this YouTube idea. It has detail.",
+            "source_file": "ideas.md", "tags": ["youtube-idea"], "mood": "excited",
+            "topic_label": "content-creation", "recorded_at": "2026-09-26T10:00:00+00:00",
+            "notion_page_id": None,
+        }]),
+        Response([]),
+    ])
+    publisher = Publisher()
+
+    result = asyncio.run(server.push_to_notion("entry-1", client=database, publisher=publisher))
+
+    assert result == {"pushed": [{"entry_id": "entry-1", "notion_page_id": "notion-page-1"}], "count": 1}
+    assert publisher.pages == [{
+        "properties": {
+            "Title": "Publish this YouTube idea.", "Topic": "content-creation", "Mood": "excited",
+            "Tags": ["youtube-idea"], "Source": (server.REPOSITORY_ROOT / "ideas.md").resolve().as_uri(),
+            "date:Date:start": "2026-09-26T10:00:00+00:00", "date:Date:is_datetime": 1,
+        },
+        "content": "Publish this YouTube idea. It has detail.\n\nSource: ideas.md",
+    }]
+    assert ("is_", ("notion_page_id", "null"), {}) in database.queries[0].calls
+    assert ("eq", ("id", "entry-1"), {}) in database.queries[0].calls
+    assert ("update", ({"notion_page_id": "notion-page-1"},), {}) in database.queries[1].calls
+
+
+def test_push_to_notion_defaults_to_recent_promoted_ideas_only() -> None:
+    class Publisher:
+        async def create_page(self, page: dict[str, Any]) -> str:
+            return f"page-{page['properties']['Title']}"
+
+    database = FakeDatabase([
+        Response([
+            {"id": "idea", "content": "A video idea.", "tags": ["youtube-idea"], "mood": "curious", "topic_label": "content-creation", "source_file": "video.md", "recorded_at": None},
+            {"id": "journal", "content": "A journal thought.", "tags": ["daily-journal"], "mood": "reflective", "topic_label": "personal-growth", "source_file": "journal.md", "recorded_at": None},
+        ]),
+        Response([]),
+    ])
+    response = asyncio.run(server.push_to_notion(client=database, publisher=Publisher(), now=server.datetime(2026, 9, 26, tzinfo=server.timezone.utc)))
+
+    assert response["count"] == 1
+    assert response["pushed"][0]["entry_id"] == "idea"
+    assert any(call[0] == "gte" and call[1][0] == "created_at" for call in database.queries[0].calls)
+
+
+def test_push_to_notion_filters_by_an_explicit_tag() -> None:
+    database = FakeDatabase([Response([])])
+
+    response = asyncio.run(server.push_to_notion(tag="business", client=database, publisher=object()))
+
+    assert response == {"pushed": [], "count": 0}
+    assert ("contains", ("tags", ["business"]), {}) in database.queries[0].calls
+
+
+def test_push_to_notion_rejects_an_invalid_limit() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        asyncio.run(server.push_to_notion(limit=0, client=object(), publisher=object()))

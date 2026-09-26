@@ -92,6 +92,17 @@ The Claude Desktop configuration entry uses that same interpreter and script
 path. Restart Claude Desktop after changing its MCP configuration, then confirm
 the `personal-kb` server has a green connected status before using its tools.
 
+## Notion curated ideas
+
+`push_to_notion` publishes one entry by `entry_id`, all unsynced entries with a
+given `tag`, or the last seven days of unsynced `youtube-idea` and
+`instagram-idea` entries. It publishes through a Notion MCP Streamable HTTP
+server, not the Notion REST API. Set `NOTION_MCP_URL` to that server and
+`NOTION_DATA_SOURCE_ID` to the curated database's data-source ID. The database
+must provide `Title`, `Topic`, `Mood`, `Tags`, `Date`, and `Source` properties.
+After Notion returns a page ID, it is stored in `entries.notion_page_id`, so a
+subsequent sequential push skips the entry.
+
 ## Retrieval evaluation export
 
 Export all rated retrieval logs with `python -m eval.export_pairs`. This writes
