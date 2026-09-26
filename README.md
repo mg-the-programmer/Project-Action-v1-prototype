@@ -75,3 +75,17 @@ folder does not create duplicate rows.
 ## Schema
 
 The `entries` table stores one knowledge-base chunk, its optional 1536-dimensional embedding, generated full-text search vector, source metadata, and labels. The vector index uses cosine distance; full-text search and tags use GIN indexes. `trigger_words` stores exact-match boost terms, while `retrieval_logs` records search results and optional 1–5 ratings.
+
+## Claude Desktop MCP server
+
+The stdio server exposes `search_entries`, `get_entry_context`, `list_by_tag`,
+`list_by_date_range`, and `ingest_entry` to Claude Desktop. It loads the
+project `.env` itself, then runs as:
+
+```powershell
+.\.venv\Scripts\python.exe mcp_server\server.py
+```
+
+The Claude Desktop configuration entry uses that same interpreter and script
+path. Restart Claude Desktop after changing its MCP configuration, then confirm
+the `personal-kb` server has a green connected status before using its tools.

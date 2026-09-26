@@ -14,6 +14,7 @@ REQUIRED_FIELDS = ("content", "source_type", "source_file", "chunk_index", "chun
 STORED_FIELDS = {
     "content", "embedding", "source_type", "source_file", "audio_offset", "word_timestamps",
     "chunk_index", "chunk_strategy", "tags", "mood", "topic_label", "moment_type", "visual_context",
+    "recorded_at",
 }
 
 
