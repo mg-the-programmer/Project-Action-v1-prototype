@@ -105,3 +105,18 @@ def test_domain_validation_becomes_a_bad_request(monkeypatch: Any) -> None:
     response = asgi_request(main.app, "GET", "/entries/missing/context")
     assert response.status_code == 400
     assert response.json()["detail"] == "No entry exists"
+
+
+def test_journal_inventory_actions_and_review_routes(monkeypatch: Any) -> None:
+    monkeypatch.setattr(main, "create_supabase_client", lambda: object())
+    monkeypatch.setattr(main, "list_journals", lambda *, client: [{"journal_name": "Friday"}])
+    monkeypatch.setattr(main, "get_journal_context", lambda source_file, *, client: [{"source_file": source_file, "id": "chunk-1"}])
+    monkeypatch.setattr(main, "list_action_items", lambda status=None, *, client: [{"id": "action-1", "status": status or "suggested"}])
+    monkeypatch.setattr(main, "review_action_item", lambda action_id, status, *, client: {"id": action_id, "status": status})
+    async def extract(**_: Any) -> dict[str, int]: return {"journals_processed": 1, "suggestions_found": 1, "journals_skipped": 0}
+    monkeypatch.setattr(main, "extract_current_journals", extract)
+    assert asgi_request(main.app, "GET", "/journals").json() == [{"journal_name": "Friday"}]
+    assert asgi_request(main.app, "GET", "/journals/context?source_file=Friday.json").json()[0]["id"] == "chunk-1"
+    assert asgi_request(main.app, "GET", "/journal-actions?status=suggested").json()[0]["status"] == "suggested"
+    assert asgi_request(main.app, "POST", "/journal-actions/action-1/review", json={"status": "approved"}).json()["status"] == "approved"
+    assert asgi_request(main.app, "POST", "/journal-actions/extract", json={}).json()["suggestions_found"] == 1

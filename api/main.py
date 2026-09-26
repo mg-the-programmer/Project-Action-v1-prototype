@@ -11,8 +11,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from mcp_server import server as knowledge_base
+from scripts.extract_actions import extract_current_journals
 from scripts.transcribe import load_environment_file
 from shared.clients import create_supabase_client
+from shared.journal_actions import get_journal_context, list_action_items, list_journals, review_action_item
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 RETRIEVAL_LOG_FIELDS = "id,query,results,rating,comment,created_at"
@@ -43,6 +45,14 @@ class IngestRequest(BaseModel):
 
 class TriggerWordRequest(BaseModel):
     word: str = Field(min_length=1)
+
+
+class ActionReviewRequest(BaseModel):
+    status: Literal["approved", "dismissed"]
+
+
+class ActionExtractionRequest(BaseModel):
+    dry_run: bool = False
 
 
 def _domain_call(call: Any, *args: Any, **kwargs: Any) -> Any:
@@ -114,6 +124,37 @@ def ingest(request: IngestRequest) -> dict[str, Any]:
     """Embed, tag, and store one direct journal or note entry."""
     recorded_at = request.recorded_at.isoformat() if request.recorded_at else None
     return _domain_call(knowledge_base.ingest_entry, request.text, request.source_type, recorded_at)
+
+
+@app.get("/journals")
+def journals() -> list[dict[str, Any]]:
+    """Inventory ingested voice journals without exposing duplicate strategies."""
+    return list_journals(client=create_supabase_client())
+
+
+@app.get("/journals/context")
+def journal_context(source_file: str = Query(min_length=1)) -> list[dict[str, Any]]:
+    """Return the canonical chunk context for one voice journal."""
+    return _domain_call(get_journal_context, source_file, client=create_supabase_client())
+
+
+@app.get("/journal-actions")
+def journal_actions(status: Literal["suggested", "approved", "dismissed"] | None = None) -> list[dict[str, Any]]:
+    """List local-only action suggestions and their source evidence."""
+    return _domain_call(list_action_items, status, client=create_supabase_client())
+
+
+@app.post("/journal-actions/{action_id}/review")
+def review_journal_action(action_id: str, request: ActionReviewRequest) -> dict[str, Any]:
+    """Record a human review decision; this never creates an external task."""
+    return _domain_call(review_action_item, action_id, request.status, client=create_supabase_client())
+
+
+@app.post("/journal-actions/extract")
+def extract_journal_actions(request: ActionExtractionRequest) -> dict[str, int]:
+    """Run the explicit OpenAI-compatible backfill for current voice journals."""
+    import asyncio
+    return asyncio.run(extract_current_journals(client=create_supabase_client(), dry_run=request.dry_run))
 
 
 @app.get("/trigger-words")

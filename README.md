@@ -132,3 +132,23 @@ npm run dev
 The dashboard is served at `http://localhost:3000` and only calls the FastAPI
 surface. To point it at a different local API port while developing, set
 `VITE_API_URL`, for example `$env:VITE_API_URL='http://127.0.0.1:8014'`.
+
+### Journal inventory and action review
+
+The dashboard's **Voice journal inventory** groups ingested `voice_memo`
+chunks by source file and exposes the canonical pause-chunk context. The
+**Action suggestions for review** queue is local to Supabase: approval or
+dismissal only changes that queue and never creates a Notion or other external
+task.
+
+Extraction is intentionally explicit. After applying migrations, run this
+command (or use the dashboard's **Extract suggestions** button):
+
+```powershell
+python scripts/extract_actions.py
+```
+
+It uses the configured OpenAI-compatible chat provider. Each action must retain
+verbatim evidence from a cited source chunk; unchanged journals are skipped on
+later runs. `--dry-run` calls the extractor without writing suggestions or
+extraction markers.
