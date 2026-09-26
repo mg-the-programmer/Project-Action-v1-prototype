@@ -38,17 +38,17 @@ class FakeDatabase:
         self.queries: list[Query] = []
 
     def table(self, table_name: str) -> Query:
-        assert table_name in {"entries", "retrieval_logs"}
+        assert table_name in {"entries", "retrieval_logs", "trigger_words"}
         query = Query(next(self.responses))
         self.queries.append(query)
         return query
 
 
-def test_registers_core_and_feedback_tools() -> None:
+def test_registers_core_feedback_and_trigger_word_tools() -> None:
     tools = asyncio.run(server.server.list_tools())
     assert {tool.name for tool in tools} == {
         "search_entries", "get_entry_context", "list_by_tag", "list_by_date_range", "ingest_entry",
-        "log_feedback", "rate_retrieval",
+        "log_feedback", "rate_retrieval", "add_trigger_word", "list_trigger_words",
     }
 
 
@@ -160,3 +160,40 @@ def test_feedback_tools_delegate_to_the_feedback_store(monkeypatch: pytest.Monke
     monkeypatch.setattr(server, "rate_retrieval", lambda *args, **kwargs: "rated-log")
     assert server.log_feedback_tool("query", [{"id": "entry"}], 5, "useful") == {"log_id": "manual-log"}
     assert server.rate_retrieval_tool("log", 2, "wrong result") == {"log_id": "rated-log"}
+
+
+def test_add_trigger_word_inserts_and_reports_the_current_list_size() -> None:
+    database = FakeDatabase([
+        Response([]), Response([{"word": "reverse honeypot"}]), Response([{"word": "reverse honeypot"}]),
+    ])
+
+    assert server.add_trigger_word(" reverse honeypot ", client=database) == {
+        "word": "reverse honeypot", "already_exists": False, "count": 1,
+    }
+    assert ("eq", ("word", "reverse honeypot"), {}) in database.queries[0].calls
+    assert ("upsert", ({"word": "reverse honeypot"},), {
+        "on_conflict": "word", "ignore_duplicates": True,
+    }) in database.queries[1].calls
+    assert ("select", ("word",), {}) in database.queries[2].calls
+
+
+def test_add_trigger_word_confirms_a_duplicate_without_inserting() -> None:
+    database = FakeDatabase([
+        Response([{"word": "reverse honeypot"}]),
+        Response([{"word": "reverse honeypot"}, {"word": "mass-time"}]),
+    ])
+
+    assert server.add_trigger_word("reverse honeypot", client=database) == {
+        "word": "reverse honeypot", "already_exists": True, "count": 2,
+    }
+    assert not any(call[0] == "upsert" for query in database.queries for call in query.calls)
+
+
+def test_list_trigger_words_orders_by_newest_added_timestamp() -> None:
+    database = FakeDatabase([Response([{"word": "mass-time", "added_at": "2026-09-26T12:00:00+00:00"}])])
+
+    assert server.list_trigger_words(client=database) == [
+        {"word": "mass-time", "added_at": "2026-09-26T12:00:00+00:00"}
+    ]
+    assert ("select", ("word,added_at",), {}) in database.queries[0].calls
+    assert ("order", ("added_at",), {"desc": True}) in database.queries[0].calls

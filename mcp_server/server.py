@@ -35,6 +35,64 @@ class EntriesClient(Protocol):
     def table(self, table_name: str) -> Any: ...
 
 
+def add_trigger_word(
+    word: str, *, client: EntriesClient | None = None
+) -> dict[str, Any]:
+    """Add a unique exact-match boost term and report the current list size."""
+    _require_text("word", word)
+    normalized_word = word.strip()
+    database = client or create_supabase_client()
+    existing = (
+        database.table("trigger_words")
+        .select("word")
+        .eq("word", normalized_word)
+        .execute()
+        .data
+        or []
+    )
+    if existing:
+        return {
+            "word": normalized_word,
+            "already_exists": True,
+            "count": _trigger_word_count(database),
+        }
+
+    inserted = (
+        database.table("trigger_words")
+        .upsert(
+            {"word": normalized_word},
+            on_conflict="word",
+            ignore_duplicates=True,
+        )
+        .execute()
+        .data
+        or []
+    )
+    return {
+        "word": normalized_word,
+        "already_exists": not bool(inserted),
+        "count": _trigger_word_count(database),
+    }
+
+
+def list_trigger_words(*, client: EntriesClient | None = None) -> list[dict[str, Any]]:
+    """Return the full trigger vocabulary, newest term first."""
+    database = client or create_supabase_client()
+    return (
+        database.table("trigger_words")
+        .select("word,added_at")
+        .order("added_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+
+
+def _trigger_word_count(database: EntriesClient) -> int:
+    """Count trigger terms after a successful add or duplicate lookup."""
+    return len(database.table("trigger_words").select("word").execute().data or [])
+
+
 def get_entry_context(entry_id: str, *, client: EntriesClient | None = None) -> list[dict[str, Any]]:
     """Return the target chunk and its immediate neighbours from the same source."""
     _require_text("id", entry_id)
@@ -213,6 +271,18 @@ def log_feedback_tool(query: str, results: list[dict[str, Any]], rating: int, co
 def rate_retrieval_tool(log_id: str, rating: int, comment: str) -> dict[str, str]:
     """Attach a one-to-five usefulness rating and comment to a retrieval log."""
     return {"log_id": rate_retrieval(log_id, rating, comment)}
+
+
+@server.tool(name="add_trigger_word")
+def add_trigger_word_tool(word: str) -> dict[str, Any]:
+    """Add a trigger word or phrase for exact-match retrieval boosting."""
+    return add_trigger_word(word)
+
+
+@server.tool(name="list_trigger_words")
+def list_trigger_words_tool() -> list[dict[str, Any]]:
+    """List trigger words and their added timestamps, newest first."""
+    return list_trigger_words()
 
 
 def main() -> None:
