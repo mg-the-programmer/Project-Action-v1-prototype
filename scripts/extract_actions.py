@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -19,7 +20,7 @@ def prompt(chunks: list[dict[str, Any]]) -> str:
     return f'''Extract only concrete actions the speaker explicitly commits to or clearly asks themselves to do.
 Return JSON only: {{"actions":[{{"wording":string,"source_chunk_index":integer,"evidence":string}}]}}.
 If there are no explicit actions, return {{"actions":[]}}. Do not infer plans, turn ideas into todos, or invent deadlines.
-`evidence` must be a verbatim phrase from the cited chunk that supports the suggestion. Wording is an AI suggestion for human review, never an automatic task.
+`evidence` must be a verbatim phrase from the cited chunk that supports the suggestion. Make `wording` a concise restatement using only words from that evidence. Wording is an AI suggestion for human review, never an automatic task.
 
 Journal:
 {source}'''
@@ -54,6 +55,8 @@ def valid_actions(raw_actions: list[dict[str, Any]], chunks: list[dict[str, Any]
             continue
         if " ".join(evidence.split()).lower() not in " ".join(str(chunk.get("content", "")).split()).lower():
             continue
+        if not _wording_is_supported(wording, evidence):
+            continue
         key = action_key(str(chunk.get("id", "")), wording)
         if key not in seen:
             valid.append({"source_entry_id": chunk["id"], "action_key": key, "wording": wording.strip(), "evidence": evidence.strip()})
@@ -61,13 +64,25 @@ def valid_actions(raw_actions: list[dict[str, Any]], chunks: list[dict[str, Any]
     return valid
 
 
+def _wording_is_supported(wording: str, evidence: str) -> bool:
+    """Require the suggested action's terms to occur in its source quotation."""
+    wording_terms = re.findall(r"[a-z0-9]+", wording.lower())
+    evidence_terms = iter(re.findall(r"[a-z0-9]+", evidence.lower()))
+    return bool(wording_terms) and all(any(term == candidate for candidate in evidence_terms) for term in wording_terms)
+
+
 async def extract_current_journals(
     *, client: Any, extractor: Callable[[list[dict[str, Any]]], Awaitable[list[dict[str, Any]]]] = openai_extract_actions,
-    dry_run: bool = False,
+    dry_run: bool = False, source_files: set[str] | None = None,
 ) -> dict[str, int]:
-    rows = (client.table("entries").select("id,content,source_file,chunk_index,chunk_strategy").eq("source_type", "voice_memo").order("source_file").order("chunk_index").execute().data or [])
+    query = client.table("entries").select("id,content,source_file,chunk_index,chunk_strategy").eq("source_type", "voice_memo")
+    if source_files is not None:
+        query = query.in_("source_file", list(source_files))
+    rows = query.order("source_file").order("chunk_index").execute().data or []
     grouped: dict[str, list[dict[str, Any]]] = {}
     for chunk in canonical_journal_rows(rows):
+        if source_files is not None and chunk["source_file"] not in source_files:
+            continue
         grouped.setdefault(chunk["source_file"], []).append(chunk)
     processed = suggestions = skipped = 0
     for source_file, chunks in grouped.items():

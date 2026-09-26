@@ -21,6 +21,7 @@ class Query:
     def select(self, *_: Any) -> Query: return self
     def order(self, *_: Any, **__: Any) -> Query: return self
     def eq(self, field: str, value: Any) -> Query: self.filters.append((field, value)); return self
+    def in_(self, field: str, values: list[Any]) -> Query: self.filters.append((field, values)); return self
     def update(self, values: dict[str, Any]) -> Query: self.values = values; return self
     def upsert(self, values: dict[str, Any] | list[dict[str, Any]], *, on_conflict: str) -> Query: self.values, self.conflict = values, on_conflict; return self
 
@@ -37,7 +38,7 @@ class Query:
                 if existing: existing.update(item)
                 else: rows.append(dict(item))
             return Response(pending)
-        return Response([row for row in rows if all(row.get(key) == value for key, value in self.filters)])
+        return Response([row for row in rows if all(row.get(key) in value if isinstance(value, list) else row.get(key) == value for key, value in self.filters)])
 
 
 class FakeDatabase:
@@ -61,6 +62,7 @@ def test_action_validation_rejects_unsupported_evidence() -> None:
     actions = valid_actions([
         {"wording": "Email the editor", "source_chunk_index": 2, "evidence": "email the editor"},
         {"wording": "Invent a task", "source_chunk_index": 2, "evidence": "not in source"},
+        {"wording": "Book a flight", "source_chunk_index": 2, "evidence": "email the editor"},
     ], chunks)
     assert len(actions) == 1
     assert actions[0]["source_entry_id"] == "a"

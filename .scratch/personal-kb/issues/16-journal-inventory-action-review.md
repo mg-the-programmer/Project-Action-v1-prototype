@@ -1,6 +1,6 @@
 # Journal inventory and reviewable action suggestions
 
-Status: claimed
+Status: resolved
 Type: task
 Blocked by: none
 
@@ -25,7 +25,19 @@ external system.
 
 ## Evidence
 
-Pending implementation.
+- Added migration `20260926030000_add_journal_action_items.sql` and applied it
+  to the configured Supabase project.
+- `python -m pytest -q -m 'not integration'` passed: 72 tests.
+- `python -m pytest tests/test_journal_actions_live.py -q` passed against
+  Supabase; its isolated entry, actions, and extraction marker were deleted.
+- `cd dashboard; npm run build` passed.
+- Read-only Supabase inventory check found 3 existing voice journals.
+- Two-axis review against `351614a...38767d6`: standards had no findings;
+  spec found unsupported wording and missing live persistence coverage. Both
+  were addressed before this ticket was resolved.
 
 ## Comments
 
+- Action wording is accepted only when its terms occur in the model's cited,
+  verbatim evidence, so an unrelated todo cannot be stored merely by quoting a
+  nearby chunk.
