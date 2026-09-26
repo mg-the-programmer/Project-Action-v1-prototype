@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import re
 import sys
 from collections.abc import Callable, Iterable
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.transcribe import REPOSITORY_ROOT, load_environment_file
+from shared.clients import embed_texts
 
 CHUNK_OUTPUT_SUFFIX = ".chunks.json"
 MARKDOWN_EXTENSIONS = {".md", ".markdown"}
@@ -209,19 +209,7 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
 
 def openai_embedder() -> EmbeddingProvider:
     """Return the configured OpenAI embedding boundary, imported only for semantic CLI runs."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required for --strategy semantic")
-    from openai import OpenAI
-
-    client = OpenAI(api_key=api_key, base_url=os.environ.get("OPENAI_BASE_URL") or None)
-    model = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
-
-    def embed(sentences: list[str]) -> list[list[float]]:
-        response = client.embeddings.create(model=model, input=sentences, dimensions=1536)
-        return [item.embedding for item in response.data]
-
-    return embed
+    return embed_texts
 
 
 def _write_chunks(path: Path, chunks: list[dict[str, Any]]) -> None:

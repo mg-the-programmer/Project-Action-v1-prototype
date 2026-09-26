@@ -14,7 +14,7 @@ create table public.entries (
   audio_offset double precision,
   word_timestamps jsonb,
   chunk_index integer,
-  chunk_strategy text check (chunk_strategy in ('pause', 'semantic')),
+  chunk_strategy text check (chunk_strategy in ('pause', 'semantic', 'heading')),
   tags text[],
   mood text,
   topic_label text,
@@ -30,6 +30,9 @@ create index entries_embedding_ivfflat_idx
 
 create index entries_tsv_gin_idx on public.entries using gin (tsv);
 create index entries_tags_gin_idx on public.entries using gin (tags);
+
+create unique index entries_source_chunk_strategy_unique_idx
+  on public.entries (source_file, chunk_index, chunk_strategy);
 
 create table public.trigger_words (
   id uuid primary key default gen_random_uuid(),
