@@ -71,10 +71,12 @@ def test_context_ingest_and_trigger_words_delegate_to_existing_operations(monkey
     monkeypatch.setattr(main.knowledge_base, "ingest_entry", lambda text, source_type, recorded_at: {"content": text, "source_type": source_type, "recorded_at": recorded_at})
     monkeypatch.setattr(main.knowledge_base, "list_trigger_words", lambda: [{"word": "mass-time"}])
     monkeypatch.setattr(main.knowledge_base, "add_trigger_word", lambda word: {"word": word.strip(), "already_exists": False, "count": 1})
+    monkeypatch.setattr(main.knowledge_base, "remove_trigger_word", lambda word: {"word": word.strip(), "count": 0})
     assert asgi_request(main.app, "GET", "/entries/entry-1/context").json() == [{"id": "entry-1"}]
     assert asgi_request(main.app, "POST", "/ingest", json={"text": "A journal thought", "source_type": "notion_note"}).status_code == 200
     assert asgi_request(main.app, "GET", "/trigger-words").json() == [{"word": "mass-time"}]
     assert asgi_request(main.app, "POST", "/trigger-words", json={"word": " new term "}).json()["word"] == "new term"
+    assert asgi_request(main.app, "DELETE", "/trigger-words/new%20term").json()["word"] == "new term"
 
 
 def test_retrieval_logs_are_limited_and_sorted(monkeypatch: Any) -> None:

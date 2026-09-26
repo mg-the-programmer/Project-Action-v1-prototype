@@ -112,3 +112,19 @@ export deliberately leaves `expected_entry_ids` empty rather than inventing
 ground truth. After configuring `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT`,
 use `python -m eval.export_pairs --push` to upload those pairs to the configured
 project-named dataset (or pass `--dataset` to override that dataset name).
+
+## Local dashboard
+
+Start the FastAPI server on port 8000, then run the Vite dashboard in a second
+terminal:
+
+```powershell
+uvicorn api.main:app --host 127.0.0.1 --port 8000
+cd dashboard
+npm install
+npm run dev
+```
+
+The dashboard is served at `http://localhost:3000` and only calls the FastAPI
+surface. To point it at a different local API port while developing, set
+`VITE_API_URL`, for example `$env:VITE_API_URL='http://127.0.0.1:8014'`.

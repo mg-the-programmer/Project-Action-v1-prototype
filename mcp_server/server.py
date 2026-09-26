@@ -91,6 +91,24 @@ def list_trigger_words(*, client: EntriesClient | None = None) -> list[dict[str,
     )
 
 
+def remove_trigger_word(word: str, *, client: EntriesClient | None = None) -> dict[str, Any]:
+    """Remove one exact-match boost term for the dashboard's vocabulary manager."""
+    _require_text("word", word)
+    normalized_word = word.strip()
+    database = client or create_supabase_client()
+    removed = (
+        database.table("trigger_words")
+        .delete()
+        .eq("word", normalized_word)
+        .execute()
+        .data
+        or []
+    )
+    if not removed:
+        raise ValueError("No trigger word exists for the supplied word")
+    return {"word": normalized_word, "count": _trigger_word_count(database)}
+
+
 def _trigger_word_count(database: EntriesClient) -> int:
     """Count trigger terms after a successful add or duplicate lookup."""
     return len(database.table("trigger_words").select("word").execute().data or [])

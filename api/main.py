@@ -100,6 +100,12 @@ def add_trigger_word(request: TriggerWordRequest) -> dict[str, Any]:
     return _domain_call(knowledge_base.add_trigger_word, request.word)
 
 
+@app.delete("/trigger-words/{word}")
+def remove_trigger_word(word: str) -> dict[str, Any]:
+    """Remove one exact-match boost term from the dashboard manager."""
+    return _domain_call(knowledge_base.remove_trigger_word, word)
+
+
 @app.get("/retrieval-logs")
 def retrieval_logs(limit: int = Query(default=50, ge=1, le=200)) -> list[dict[str, Any]]:
     """Return recent retrieval interactions and their optional user ratings."""

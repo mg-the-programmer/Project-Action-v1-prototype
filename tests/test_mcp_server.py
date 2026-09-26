@@ -70,6 +70,17 @@ def test_get_entry_context_limits_to_adjacent_chunks_in_the_same_source() -> Non
     assert ("order", ("chunk_index",), {}) in calls
 
 
+def test_remove_trigger_word_deletes_the_normalized_word() -> None:
+    database = FakeDatabase([Response([{"word": "reverse honeypot"}]), Response([])])
+
+    assert server.remove_trigger_word(" reverse honeypot ", client=database) == {
+        "word": "reverse honeypot", "count": 0
+    }
+    calls = database.queries[0].calls
+    assert ("delete", (), {}) in calls
+    assert ("eq", ("word", "reverse honeypot"), {}) in calls
+
+
 def test_list_tools_filter_and_order_entries() -> None:
     tag_database = FakeDatabase([Response([{"id": "tagged"}])])
     assert server.list_by_tag("cybersecurity", client=tag_database) == [{"id": "tagged"}]
