@@ -6,12 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] Store step upserts enriched chunks into `entries` table; uses `source_file + chunk_index + chunk_strategy` as the upsert key to avoid duplicates on reruns
-- [ ] Top-level `ingest.py` CLI accepts a folder path and file type flag (`--type audio` or `--type notes`), chains all four steps in sequence
-- [ ] Progress is logged to console: files processed, chunks created, entries upserted
+- [x] Store step upserts enriched chunks into `entries` table; uses `source_file + chunk_index + chunk_strategy` as the upsert key to avoid duplicates on reruns
+- [x] Top-level `ingest.py` CLI accepts a folder path and file type flag (`--type audio` or `--type notes`), chains all four steps in sequence
+- [x] Progress is logged to console: files processed, chunks created, entries upserted
 - [ ] Running `ingest.py` on 3–5 real audio files produces populated `entries` rows visible in Supabase dashboard
-- [ ] Running `ingest.py` on exported Notion markdown files also works end-to-end
-- [ ] Reruns are safe — no duplicate entries created
+- [x] Running `ingest.py` on exported Notion markdown files also works end-to-end
+- [x] Reruns are safe — no duplicate entries created
 
 ## Comments
 
@@ -62,3 +62,43 @@ hard violation and one duplicate embedding-adapter judgement call; fixed by
 making `scripts.chunk.openai_embedder` use `shared.clients.embed_texts`. Spec
 review found only the unproven live end-to-end acceptance criterion documented
 above. Post-fix full test command: `python -m pytest -q` → `19 passed in 0.69s`.
+
+2026-09-26 — Resumed after Ticket 04 switched tagging to the configured
+OpenAI-compatible provider and five audio plus 137 exported Markdown samples
+became available. A representative real exported Notion file completed through
+all stages and stored remotely:
+
+```text
+python ingest.py 'datasets\\yt ideas notion backup' --type notes
+Files processed: 1; chunks created: 1; entries upserted: 1
+exit=0
+```
+
+The corresponding live Supabase identity count was `1` before rerun and `1`
+after rerun (`note_unique_identities=1`), proving the upsert did not create a
+duplicate. Full suite after the provider update: `python -m pytest -q` →
+`21 passed in 0.78s`.
+
+For audio, a temporary ignored validation folder contained three hard-linked
+real memos (Ideation, Mg life intro, Workshop ideas). Transcription and
+chunking completed for all three; the first memo fully tagged and stored two
+remote rows, confirmed as:
+
+```text
+audio_rows_for_completed_first_memo= 2
+audio_unique_identities= 2
+audio_chunk_indices= [0, 1]
+```
+
+The provider then stopped the remaining audio tagging stage:
+
+```text
+python ingest.py 'datasets\\voice_journals\\ticket-05-validation' --type audio
+Error: Error code: 429 - ... budget_exceeded ... Current cost: 985.548823, Max budget: 985.0
+exit=1
+```
+
+Therefore the 3–5 real-audio full-ingestion/dashboard criterion is still not
+proven. Ticket remains open until the configured OpenAI-compatible key has
+budget and the three-file run plus a rerun can complete. The other checked
+criteria have live Supabase evidence above.
