@@ -38,16 +38,17 @@ class FakeDatabase:
         self.queries: list[Query] = []
 
     def table(self, table_name: str) -> Query:
-        assert table_name == "entries"
+        assert table_name in {"entries", "retrieval_logs"}
         query = Query(next(self.responses))
         self.queries.append(query)
         return query
 
 
-def test_registers_the_five_core_tools() -> None:
+def test_registers_core_and_feedback_tools() -> None:
     tools = asyncio.run(server.server.list_tools())
     assert {tool.name for tool in tools} == {
-        "search_entries", "get_entry_context", "list_by_tag", "list_by_date_range", "ingest_entry"
+        "search_entries", "get_entry_context", "list_by_tag", "list_by_date_range", "ingest_entry",
+        "log_feedback", "rate_retrieval",
     }
 
 
@@ -137,3 +138,25 @@ def test_ingest_entry_uses_the_current_time_when_recorded_at_is_omitted(monkeypa
     )
     assert result["recorded_at"] is not None
     assert server._parse_datetime(result["recorded_at"]).tzinfo is not None
+
+
+def test_search_entries_logs_results_and_returns_the_log_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    database = object()
+    monkeypatch.setattr(server, "create_supabase_client", lambda: database)
+    monkeypatch.setattr(server, "retrieve_entries", lambda *args, **kwargs: [{"id": "entry-1"}])
+    calls: list[tuple[str, list[dict[str, Any]], Any]] = []
+    monkeypatch.setattr(
+        server, "log_retrieval",
+        lambda query, results, client: calls.append((query, results, client)) or "log-1",
+    )
+    assert server.search_entries("security teaching") == {
+        "log_id": "log-1", "results": [{"id": "entry-1"}]
+    }
+    assert calls == [("security teaching", [{"id": "entry-1"}], database)]
+
+
+def test_feedback_tools_delegate_to_the_feedback_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "log_retrieval", lambda *args, **kwargs: "manual-log")
+    monkeypatch.setattr(server, "rate_retrieval", lambda *args, **kwargs: "rated-log")
+    assert server.log_feedback_tool("query", [{"id": "entry"}], 5, "useful") == {"log_id": "manual-log"}
+    assert server.rate_retrieval_tool("log", 2, "wrong result") == {"log_id": "rated-log"}

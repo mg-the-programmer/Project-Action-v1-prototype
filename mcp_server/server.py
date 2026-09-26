@@ -19,6 +19,7 @@ from scripts.store import store_chunks
 from scripts.tag import openai_tag
 from scripts.transcribe import load_environment_file
 from shared.clients import create_supabase_client, embed_texts
+from shared.feedback import log_retrieval, rate_retrieval
 from shared.retrieval import search_entries as retrieve_entries
 
 CONTEXT_FIELDS = (
@@ -171,9 +172,11 @@ server = FastMCP("Personal Knowledge Base")
 
 
 @server.tool(name="search_entries")
-def search_entries(query: str, top_k: int = 15, weight: float = 0.7) -> list[dict[str, Any]]:
-    """Search entries with blended semantic and exact-match retrieval."""
-    return retrieve_entries(query, top_k=top_k, weight=weight)
+def search_entries(query: str, top_k: int = 15, weight: float = 0.7) -> dict[str, Any]:
+    """Search entries, log the interaction, and return results with its log id."""
+    database = create_supabase_client()
+    results = retrieve_entries(query, top_k=top_k, weight=weight, client=database)
+    return {"log_id": log_retrieval(query, results, client=database), "results": results}
 
 
 @server.tool(name="get_entry_context")
@@ -198,6 +201,18 @@ def list_by_date_range_tool(start: str, end: str) -> list[dict[str, Any]]:
 async def ingest_entry_tool(text: str, source_type: str, recorded_at: str | None = None) -> dict[str, Any]:
     """Add one journal or note entry through embedding, tagging, and storage."""
     return await _ingest_entry(text, source_type, recorded_at)
+
+
+@server.tool(name="log_feedback")
+def log_feedback_tool(query: str, results: list[dict[str, Any]], rating: int, comment: str) -> dict[str, str]:
+    """Record a rated retrieval interaction that happened outside search_entries."""
+    return {"log_id": log_retrieval(query, results, rating=rating, comment=comment)}
+
+
+@server.tool(name="rate_retrieval")
+def rate_retrieval_tool(log_id: str, rating: int, comment: str) -> dict[str, str]:
+    """Attach a one-to-five usefulness rating and comment to a retrieval log."""
+    return {"log_id": rate_retrieval(log_id, rating, comment)}
 
 
 def main() -> None:

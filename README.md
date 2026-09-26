@@ -79,8 +79,10 @@ The `entries` table stores one knowledge-base chunk, its optional 1536-dimension
 ## Claude Desktop MCP server
 
 The stdio server exposes `search_entries`, `get_entry_context`, `list_by_tag`,
-`list_by_date_range`, and `ingest_entry` to Claude Desktop. It loads the
-project `.env` itself, then runs as:
+`list_by_date_range`, `ingest_entry`, `log_feedback`, and `rate_retrieval` to
+Claude Desktop. `search_entries` returns both the results and a `log_id` that
+can be passed to `rate_retrieval`. It loads the project `.env` itself, then
+runs as:
 
 ```powershell
 .\.venv\Scripts\python.exe mcp_server\server.py
@@ -89,3 +91,13 @@ project `.env` itself, then runs as:
 The Claude Desktop configuration entry uses that same interpreter and script
 path. Restart Claude Desktop after changing its MCP configuration, then confirm
 the `personal-kb` server has a green connected status before using its tools.
+
+## Retrieval evaluation export
+
+Export all rated retrieval logs with `python -m eval.export_pairs`. This writes
+`eval/pairs.json` using `{query, expected_entry_ids, actual_results, rating,
+comment}` objects. Ratings do not identify a single expected entry, so the
+export deliberately leaves `expected_entry_ids` empty rather than inventing
+ground truth. After configuring `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT`,
+use `python -m eval.export_pairs --push` to upload those pairs to the configured
+project-named dataset (or pass `--dataset` to override that dataset name).
