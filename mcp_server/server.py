@@ -210,7 +210,79 @@ async def _ingest_entry(
     chunk.update({key: metadata.get(key) for key in ("tags", "mood", "topic_label", "moment_type", "visual_context")})
     database = client or create_supabase_client()
     store_chunks([chunk], client=database)
+    chunk["id"] = _stored_entry_id(database, chunk)
     return chunk
+
+
+def _stored_entry_id(database: EntriesClient, chunk: dict[str, Any]) -> str:
+    """Read the id assigned to a just-upserted single-entry journal chunk."""
+    rows = (
+        database.table("entries")
+        .select("id")
+        .eq("source_file", chunk["source_file"])
+        .eq("chunk_index", chunk["chunk_index"])
+        .eq("chunk_strategy", chunk["chunk_strategy"])
+        .execute()
+        .data
+        or []
+    )
+    if not rows or not isinstance(rows[0].get("id"), str):
+        raise RuntimeError("Stored entry lookup did not return an id")
+    return rows[0]["id"]
+
+
+async def journal_and_recall(
+    text: str,
+    recorded_at: str | None = None,
+    *,
+    client: Any | None = None,
+    embedder: Callable[[list[str]], list[list[float]]] = embed_texts,
+    tagger: Callable[[str], Awaitable[dict[str, Any]]] = openai_tag,
+    retriever: Callable[..., list[dict[str, Any]]] = retrieve_entries,
+) -> dict[str, Any]:
+    """Ingest a journal entry, then return and log only related older entries."""
+    database = client or create_supabase_client()
+    entry = await _ingest_entry(
+        text,
+        "notion_note",
+        recorded_at,
+        client=database,
+        embedder=embedder,
+        tagger=tagger,
+    )
+    past_results = [
+        result
+        for result in retriever(entry["content"], top_k=16, client=database)
+        if result.get("id") != entry["id"]
+    ][:15]
+    log_id = log_retrieval(entry["content"], past_results, client=database)
+    return {
+        "ingestion": {
+            field: entry.get(field)
+            for field in ("id", "content", "recorded_at", "tags", "mood", "topic_label", "moment_type")
+        },
+        "log_id": log_id,
+        "related_past_entries": [
+            {
+                "rank": index,
+                "id": result.get("id"),
+                "source": result.get("source_file"),
+                "date": result.get("recorded_at"),
+                "mood": result.get("mood"),
+                "content_preview": _content_preview(result.get("content")),
+                "blended_score": result.get("blended_score"),
+            }
+            for index, result in enumerate(past_results, start=1)
+        ],
+    }
+
+
+def _content_preview(content: Any, limit: int = 280) -> str | None:
+    """Keep Claude Desktop's recall list scannable without hiding the source text."""
+    if not isinstance(content, str):
+        return None
+    normalized = " ".join(content.split())
+    return normalized if len(normalized) <= limit else f"{normalized[:limit - 3]}..."
 
 
 def _single_embedding(embedder: Callable[[list[str]], list[list[float]]], text: str) -> list[float]:
@@ -272,6 +344,12 @@ def list_by_date_range_tool(start: str, end: str) -> list[dict[str, Any]]:
 async def ingest_entry_tool(text: str, source_type: str, recorded_at: str | None = None) -> dict[str, Any]:
     """Add one journal or note entry through embedding, tagging, and storage."""
     return await _ingest_entry(text, source_type, recorded_at)
+
+
+@server.tool(name="journal_and_recall")
+async def journal_and_recall_tool(text: str, recorded_at: str | None = None) -> dict[str, Any]:
+    """Save today's journal entry, then show ranked related entries from the past."""
+    return await journal_and_recall(text, recorded_at)
 
 
 @server.tool(name="log_feedback")

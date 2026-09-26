@@ -48,7 +48,7 @@ def test_registers_core_feedback_and_trigger_word_tools() -> None:
     tools = asyncio.run(server.server.list_tools())
     assert {tool.name for tool in tools} == {
         "search_entries", "get_entry_context", "list_by_tag", "list_by_date_range", "ingest_entry",
-        "log_feedback", "rate_retrieval", "add_trigger_word", "list_trigger_words",
+        "log_feedback", "rate_retrieval", "add_trigger_word", "list_trigger_words", "journal_and_recall",
     }
 
 
@@ -97,12 +97,14 @@ def test_ingest_entry_enriches_and_stores_a_single_chunk(monkeypatch: pytest.Mon
                 "moment_type": "reflection", "visual_context": None}
 
     monkeypatch.setattr(server, "store_chunks", fake_store)
+    monkeypatch.setattr(server, "_stored_entry_id", lambda *_: "stored-entry")
     result = server.ingest_entry(
         "Today I learned to leave room for reflection.", "notion_note", "2026-09-26T10:00:00+00:00",
         client=database, embedder=lambda _: [[0.5] * 1536], tagger=fake_tagger,
     )
 
-    assert result == stored[0]
+    assert result.items() >= stored[0].items()
+    assert isinstance(result["id"], str)
     assert result["source_type"] == "notion_note"
     assert result["chunk_strategy"] == "heading"
     assert result["recorded_at"] == "2026-09-26T10:00:00+00:00"
@@ -122,6 +124,7 @@ def test_ingest_entry_uses_the_default_voice_memo_chunk_strategy(monkeypatch: py
         return {"tags": [], "mood": "neutral", "topic_label": "random", "moment_type": None, "visual_context": None}
 
     monkeypatch.setattr(server, "store_chunks", lambda chunks, client: 1)
+    monkeypatch.setattr(server, "_stored_entry_id", lambda *_: "stored-entry")
     result = server.ingest_entry(
         "A spoken reflection.", "voice_memo", client=object(), embedder=lambda _: [[0.5] * 1536], tagger=fake_tagger
     )
@@ -133,6 +136,7 @@ def test_ingest_entry_uses_the_current_time_when_recorded_at_is_omitted(monkeypa
         return {"tags": [], "mood": "neutral", "topic_label": "random", "moment_type": None, "visual_context": None}
 
     monkeypatch.setattr(server, "store_chunks", lambda chunks, client: 1)
+    monkeypatch.setattr(server, "_stored_entry_id", lambda *_: "stored-entry")
     result = server.ingest_entry(
         "A direct journal entry.", "notion_note", client=object(), embedder=lambda _: [[0.5] * 1536], tagger=fake_tagger
     )
@@ -153,6 +157,61 @@ def test_search_entries_logs_results_and_returns_the_log_id(monkeypatch: pytest.
         "log_id": "log-1", "results": [{"id": "entry-1"}]
     }
     assert calls == [("security teaching", [{"id": "entry-1"}], database)]
+
+
+def test_journal_and_recall_returns_only_past_entries_and_logs_them(monkeypatch: pytest.MonkeyPatch) -> None:
+    database = object()
+
+    async def fake_ingest(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        assert args[:3] == ("Today I refined my teaching analogy.", "notion_note", "2026-09-26T10:00:00+00:00")
+        assert kwargs["client"] is database
+        return {
+            "id": "new-entry", "content": args[0], "recorded_at": args[2],
+            "tags": ["daily-journal"], "mood": "reflective", "topic_label": "personal-growth",
+            "moment_type": "reflection",
+        }
+
+    monkeypatch.setattr(server, "_ingest_entry", fake_ingest)
+    logged: list[tuple[str, list[dict[str, Any]], Any]] = []
+    monkeypatch.setattr(
+        server,
+        "log_retrieval",
+        lambda query, results, client: logged.append((query, results, client)) or "recall-log",
+    )
+    results = [
+        {"id": "new-entry", "content": "Today I refined my teaching analogy."},
+        {
+            "id": "older-entry", "source_file": "memo.m4a", "recorded_at": "2026-09-20T08:00:00+00:00",
+            "mood": "curious", "content": "An older note about the same analogy.", "blended_score": 0.81,
+        },
+    ]
+    retrieval_calls: list[dict[str, Any]] = []
+
+    def fake_retriever(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        retrieval_calls.append(kwargs)
+        return results
+
+    response = asyncio.run(
+        server.journal_and_recall(
+            "Today I refined my teaching analogy.",
+            "2026-09-26T10:00:00+00:00",
+            client=database,
+            retriever=fake_retriever,
+        )
+    )
+
+    assert response["ingestion"]["id"] == "new-entry"
+    assert response["log_id"] == "recall-log"
+    assert response["related_past_entries"] == [{
+        "rank": 1, "id": "older-entry", "source": "memo.m4a", "date": "2026-09-20T08:00:00+00:00",
+        "mood": "curious", "content_preview": "An older note about the same analogy.", "blended_score": 0.81,
+    }]
+    assert logged == [("Today I refined my teaching analogy.", [results[1]], database)]
+    assert retrieval_calls == [{"top_k": 16, "client": database}]
+
+
+def test_journal_and_recall_truncates_long_content_previews() -> None:
+    assert server._content_preview("x" * 281) == ("x" * 277) + "..."
 
 
 def test_feedback_tools_delegate_to_the_feedback_store(monkeypatch: pytest.MonkeyPatch) -> None:
